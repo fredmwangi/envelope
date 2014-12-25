@@ -37,14 +37,13 @@ add_definitions (${CC_OPTS})
 link_libraries(${DEPS_LIBRARIES})
 link_directories(${DEPS_LIBRARY_DIRS})
 
+# Vala
 find_package(Vala REQUIRED)
-
 include(ValaVersion)
-
 ensure_vala_version("0.23.2" MINIMUM)
-
 include(ValaPrecompile)
 
+# our VALA source files
 vala_precompile(VALA_C ${EXEC_NAME}
 
   src/util/String.vala
@@ -95,12 +94,19 @@ vala_precompile(VALA_C ${EXEC_NAME}
   CUSTOM_VAPIS
     src/vapi/monetary.vapi
     src/vapi/config.vapi
+    src/vapi/timelib.vapi
 )
 
+# for .desktop file and gsettings schema
 add_subdirectory (data)
 
-add_executable(${EXEC_NAME} ${VALA_C})
+# timelib
+file (GLOB_RECURSE TIMELIB_SOURCES ${CMAKE_SOURCE_DIR}/timelib/*.c)
+add_definitions("-I${CMAKE_SOURCE_DIR}/timelib")
+add_library ("timelib" OBJECT  ${TIMELIB_SOURCES} )
+
+# envelope
+add_executable(${EXEC_NAME} ${VALA_C} $<TARGET_OBJECTS:timelib>)
 
 install (TARGETS ${EXEC_NAME} RUNTIME DESTINATION bin)
-
 install (FILES ${CMAKE_CURRENT_SOURCE_DIR}/data/envelope.desktop DESTINATION ${DATADIR}/applications/)
