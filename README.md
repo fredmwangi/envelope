@@ -48,3 +48,7 @@ From there you can either use the binary in `build/envelope` or install it:
 ```sh
 $ sudo make install
 ```
+## Disclaimer
+
+Some features of envelope use the [timelib](https://github.com/derickr/timelib)
+library.
