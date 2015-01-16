@@ -36,13 +36,13 @@ namespace Envelope.View {
             return sidebar_instance;
         }
 
-        private static const int COLUMN_COUNT = 14;
+        private static const int COLUMN_COUNT = 15;
 
-        private static const string ICON_ACCOUNT    = /*"text-spreadsheet"*/ "account";
+        private static const string ICON_ACCOUNT    = "text-spreadsheet";
         private static const string ICON_OUTFLOW    = "go-up-symbolic";
         private static const string ICON_INFLOW     = "go-down-symbolic";
         private static const string ICON_REMAINING  = "view-refresh-symbolic";
-        private static const string ICON_CATEGORY   = /*"folder-symbolic"*/ "category";
+        private static const string ICON_CATEGORY   = "folder-symbolic";
         private static const string ICON_ACTION_ADD = "tab-new-symbolic";
 
         private enum Action {
@@ -67,7 +67,8 @@ namespace Envelope.View {
             TOOLTIP,
             BUDGET_STATE,
             EDITABLE,
-            COLOR
+            COLOR,
+            CIRCLE
         }
 
         private enum TreeCategory {
@@ -97,7 +98,6 @@ namespace Envelope.View {
 
         private Granite.Widgets.CellRendererExpander cre;
         private Gtk.CellRendererText crt_balance_total;
-        private CellRendererColoredCircle crb;
 
         public Gee.ArrayList<Account> accounts { get; set; }
 
@@ -132,7 +132,8 @@ namespace Envelope.View {
                 typeof (string),
                 typeof (BudgetState),
                 typeof (bool),
-                typeof (string)
+                typeof (string),
+                typeof (Gdk.Pixbuf)
             );
 
             build_ui ();
@@ -179,14 +180,16 @@ namespace Envelope.View {
             var crs = new Gtk.CellRendererText ();
             col.pack_start (crs, false);
 
-            var cri = new Gtk.CellRendererPixbuf ();
+            /*var cri = new Gtk.CellRendererPixbuf ();
             col.pack_start (cri, false);
             col.set_attributes (cri, "icon-name", Column.ICON);
             col.set_cell_data_func (cri, treeview_icon_renderer_function);
+            */
 
-            crb = new CellRendererColoredCircle ();
+            var crb = new Gtk.CellRendererPixbuf ();
             col.pack_start (crb, false);
-            //col.set_attributes (crb, "color", Column.COLOR);
+            col.add_attribute (crb, "pixbuf", Column.CIRCLE);
+            crb.visible = true;
             col.set_cell_data_func (crb, treeview_circle_renderer_function);
 
             var crt = new Gtk.CellRendererText ();
@@ -226,8 +229,6 @@ namespace Envelope.View {
             crp.value = 0;
             col.pack_end (crp, true);
             col.set_cell_data_func (crp, treeview_progress_renderer_function);
-
-
 
             add (treeview);
 
@@ -333,6 +334,15 @@ namespace Envelope.View {
 
             foreach (Account account in accounts) {
 
+                var color = get_color (account);
+
+                var rgba = Gdk.RGBA ();
+                rgba.parse (color);
+
+                debug ("RGBA FOR ACCOUNT IS %s", rgba.to_string ());
+
+                var pixbuf = get_circle (rgba);
+
                 add_item (account_iter,
                     account.number,
                     TreeCategory.ACCOUNTS,
@@ -340,13 +350,14 @@ namespace Envelope.View {
                     null,
                     Action.NONE,
                     null,
-                    /*ICON_ACCOUNT*/null,
+                    ICON_ACCOUNT,
                     false,
                     true,
                     account.description != null ? "%s - %s".printf (account.number, account.description) : account.number,
                     null,
                     true,
-                    get_color (account));
+                    color,
+                    pixbuf);
             }
 
             // Add "Add account..."
@@ -587,7 +598,8 @@ namespace Envelope.View {
                                        string tooltip = "",
                                        BudgetState? budget_state = null,
                                        bool is_editable = false,
-                                       string? color = null) {
+                                       string? color = null,
+                                       Gdk.Pixbuf? pixbuf = null) {
 
             debug ("add item '%s'", label);
 
@@ -598,6 +610,10 @@ namespace Envelope.View {
             var state_currency = "";
             if (state_amount != null) {
                 state_currency = Envelope.Util.String.format_currency (state_amount);
+            }
+
+            if (pixbuf != null) {
+                debug ("PIXBUF IS THERE FOR %s", label);
             }
 
             store.@set (iter, Column.LABEL, label,
@@ -613,7 +629,8 @@ namespace Envelope.View {
                 Column.TOOLTIP, tooltip != "" ? tooltip : label,
                 Column.BUDGET_STATE, budget_state,
                 Column.EDITABLE, is_editable,
-                Column.COLOR, color, -1);
+                Column.COLOR, color,
+                Column.CIRCLE, pixbuf, -1);
 
             return iter;
         }
@@ -623,22 +640,42 @@ namespace Envelope.View {
                                                          Gtk.TreeModel model,
                                                          Gtk.TreeIter iter) {
 
-            CellRendererColoredCircle crcc = renderer as CellRendererColoredCircle;
+            Gtk.CellRendererPixbuf crp = renderer as Gtk.CellRendererPixbuf;
 
             string? color;
             string label;
-            model.@get (iter, Column.COLOR, out color, Column.LABEL, out label, -1);
+            Gdk.Pixbuf? pixbuf;
+            model.@get (iter,
+                Column.COLOR, out color,
+                Column.CIRCLE, out pixbuf,
+                Column.LABEL, out label, -1);
 
-            if (color != null) {
+            crp.visible = true;
+
+            if (color != null && pixbuf != null) {
                 debug ("showing circle renderer for item %s", label);
-                Gdk.RGBA rgba = Gdk.RGBA ();
-                rgba.parse (color);
-                crcc.color = rgba;
-                crcc.visible = true;
+
             }
-            else {
-                crcc.visible = false;
+            /*else {
+                debug ("hiding for item %s", label);
+                renderer.visible = false;
             }
+            */
+        }
+
+        private Gdk.Pixbuf get_circle (Gdk.RGBA color) {
+            var surface = new Granite.Drawing.BufferSurface (16, 16);
+            var context = surface.context;
+
+            context.set_source_rgba (color.red, color.green, color.blue, 0.5);
+            context.translate (16 / 2, 16 / 2);
+            context.arc (0, 0, (16 / 2) - 2, 0, 2 * Math.PI);
+            context.fill_preserve ();
+            context.set_line_width (1);
+            context.set_source_rgb (color.red, color.green, color.blue);
+            context.stroke ();
+
+            return surface.load_to_pixbuf ();
         }
 
         /**
@@ -1448,9 +1485,10 @@ namespace Envelope.View {
         }
 
         private string get_color (Account account) {
-            Random.set_seed ((int32) new DateTime.now_local ().to_unix ());
-            return "rgba(0,0,0,%f)".printf(Random.double_range (0.5, 1.0));
+            //Random.set_seed ((int32) new DateTime.now_local ().to_unix ());
+            //return "rgba(0,0,0,%f)".printf(Random.double_range (0.5, 1.0));
             //return "rgba(0,0,0,1.0)";
+            return "rgba(126,213,129,1.0)";
         }
     }
 }
